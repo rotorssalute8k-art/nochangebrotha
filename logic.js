@@ -101,16 +101,31 @@ export function monthSummary(state, now = Date.now()) {
   const freeSpent = sum(freeTx);
   const deposits = state.deposits.filter((x) => mkey(x.date) === mkey(now)).reduce((a, x) => a + x.amount, 0);
   const initialFree = budget - pflicht;
-  const freeLeft = initialFree - freeSpent - deposits;
+  let freeLeft = initialFree - freeSpent - deposits;
+  // Kontostand-Modus: ab dem eingetragenen Stand rechnen (nur im selben Monat)
+  let balance = null;
+  if (s.balance && mkey(s.balance.at) === mkey(now)) {
+    const at = s.balance.at;
+    const dayStart = new Date(at); dayStart.setHours(0, 0, 0, 0);
+    const after = state.tx.filter((t) => (t.created || t.date) > at && t.date >= dayStart.getTime());
+    const spentAfter = sum(after.filter((t) => !t.income && t.cat !== 'fix'));
+    const incomeAfter = sum(after.filter((t) => t.income));
+    const fixRemain = fixed.items.reduce((a, f) => a + f.occ.filter((o) => o > at).length * f.amount, 0);
+    const commuteRemain = (tank.rate + park.rate) * Math.max(0, daysLeft - 0.5);
+    const depAfter = state.deposits.filter((x) => x.date > at).reduce((a, x) => a + x.amount, 0);
+    freeLeft = s.balance.amount + incomeAfter - spentAfter - fixRemain - commuteRemain - depAfter;
+    balance = { amount: s.balance.amount, at, fixRemain, commuteRemain, spentAfter };
+  }
   const perDay = daysLeft > 0 ? freeLeft / daysLeft : freeLeft;
   // Ampel: verglichen mit dem Anteil, der zeitlich noch übrig sein sollte
+  const ref = Math.max(30, initialFree);
   let amp = 'gruen';
-  if (initialFree <= 5 || freeLeft <= Math.max(5, initialFree * 0.05)) amp = 'rot';
-  else if (freeLeft / initialFree < (daysLeft / dim) * 0.85 || perDay < 3) amp = 'gelb';
+  if (freeLeft <= Math.max(5, ref * 0.05)) amp = 'rot';
+  else if (freeLeft / ref < (daysLeft / dim) * 0.85 || perDay < 3) amp = 'gelb';
   const impulse = txs.filter((t) => t.impulse && !t.income);
   return {
     y, m, dim, today, daysLeft, budget, fixed, tank, park, tankSoFar, parkSoFar, tankProj, parkProj, pflicht,
-    freeSpent, freeTx, deposits, initialFree, freeLeft, perDay, amp, impulse, txs
+    freeSpent, freeTx, deposits, initialFree, freeLeft, perDay, amp, impulse, txs, balance
   };
 }
 export const sum = (list) => list.reduce((a, t) => a + (+t.amount || 0), 0);

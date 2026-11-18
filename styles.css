@@ -148,3 +148,5 @@ details summary{font-size:14px;font-weight:600;cursor:pointer;min-height:32px;di
 #tabbar a[aria-current]{color:var(--red);font-weight:600}
 #toast{position:fixed;left:50%;bottom:calc(env(safe-area-inset-bottom) + 90px);transform:translate(-50%,20px);background:var(--ink);color:#fff;padding:10px 16px;border-radius:12px;font-size:14px;opacity:0;pointer-events:none;transition:.25s;z-index:20;max-width:90vw;text-align:center}
 #toast.show{opacity:1;transform:translate(-50%,0)}
+.standlink{align-self:center;font-size:13px;font-weight:600;color:#2F6FD6;text-decoration:none;padding:2px 8px;margin-top:-4px}
+.link2{text-decoration:none}.link2 b{color:#2F6FD6}

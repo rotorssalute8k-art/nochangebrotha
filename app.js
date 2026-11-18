@@ -108,7 +108,7 @@ function housekeeping() {
 }
 
 // ---------- Router ----------
-const routes = { monat: vMonat, neu: vNeu, chat: vChat, grafik: vGrafik, ziele: vZiele, pflicht: vPflicht, willkommen: vWillkommen };
+const routes = { stand: vStand, monat: vMonat, neu: vNeu, chat: vChat, grafik: vGrafik, ziele: vZiele, pflicht: vPflicht, willkommen: vWillkommen };
 const TABS = [['monat', 'Monat', 'monat'], ['grafik', 'Grafik', 'grafik'], ['chat', 'Chat', 'chat'], ['ziele', 'Ziele', 'ziele']];
 let routeArg = null;
 function route() {
@@ -118,14 +118,28 @@ function route() {
   if (!routes[name]) name = 'monat';
   routeArg = arg ? decodeURIComponent(arg) : null;
   $('#view').innerHTML = routes[name](routeArg);
-  const tab = { neu: 'monat', pflicht: 'monat' }[name] || name;
-  $('#tabbar').hidden = name === 'willkommen' || name === 'neu';
+  const tab = { neu: 'monat', pflicht: 'monat', stand: 'monat' }[name] || name;
+  $('#tabbar').hidden = name === 'willkommen' || name === 'neu' || name === 'stand';
   $('#tabbar').innerHTML = TABS.map(([r, l, i]) => `<a href="#/${r}" ${r === tab ? 'aria-current="page"' : ''}>${svg(i)}<span>${l}</span></a>`).join('');
   const f = document.querySelector('[autofocus]'); if (f) setTimeout(() => f.focus(), 50);
 }
 const rerender = () => { const y = scrollY; route(); scrollTo(0, y); };
 const back = (href, l) => `<a class="back" href="${href}">${svg('back', 18)}${l}</a>`;
 const bubble = (who, text, extra = '') => `<div class="bubble">${av(who, 40)}<p><b style="color:${PERS[who].ink}">${esc(PERS[who].name)}</b>${esc(text)}${extra}</p></div>`;
+
+// ---------- KONTOSTAND ----------
+function vStand() {
+  const b = S().balance;
+  return `<div class="page entry">
+    <div class="entry-top"><a class="back" href="#/monat">Abbrechen</a><b>Kontostand</b><span style="width:70px"></span></div>
+    <p class="muted">Schau in die Sparkasse-App und trag ein, was gerade auf deinem Girokonto ist. Ab jetzt rechnet die App so: Kontostand minus alles, was diesen Monat noch an Pflicht kommt (Fixkosten, Tanken, Parken), minus was du danach ausgibst.</p>
+    <form data-form="stand" class="form">
+      <label class="amount"><span class="sr-only">Kontostand in Euro</span><input name="amount" inputmode="decimal" placeholder="0,00" value="${b && mkey(b.at) === mkey(Date.now()) ? n2(b.amount).replace('.', ',') : ''}" autofocus autocomplete="off"><span>€</span></label>
+      <button class="btn red big" type="submit">Speichern</button>
+      ${b ? '<button type="button" class="btn ghost-red" data-act="standClear">Kontostand nicht mehr nutzen</button>' : ''}
+    </form>
+    <p class="hint">Gilt bis Monatsende. Im neuen Monat einfach wieder eintragen, am besten nachdem das ZF-Geld da ist. Ausgaben, die du nach dem Speichern einträgst, werden automatisch abgezogen.</p></div>`;
+}
 
 // ---------- MONAT ----------
 function vMonat() {
@@ -136,7 +150,7 @@ function vMonat() {
   const seed = Math.floor(now / DAY) + m.today;
   const ctx = { free: eur0(Math.max(0, m.freeLeft)), days: m.daysLeft, perDay: eur(Math.max(0, m.perDay)), goal: g ? g.name : 'dein Ziel', seed };
   const line = ampelLine(m.amp, ctx, active(), S().tone);
-  const share = m.initialFree > 0 ? Math.max(0, Math.min(1, (m.freeSpent + m.deposits) / m.initialFree)) : 1;
+  const share = m.balance ? Math.max(0, Math.min(1, 1 - m.freeLeft / Math.max(1, m.balance.amount))) : m.initialFree > 0 ? Math.max(0, Math.min(1, (m.freeSpent + m.deposits) / m.initialFree)) : 1;
   const pflShare = m.budget > 0 ? Math.min(1, m.pflicht / m.budget) : 1;
   const recent = [...state.tx].sort((a, b) => b.date - a.date || (b.created || 0) - (a.created || 0)).slice(0, 6);
   const pend = state.pending;
@@ -146,13 +160,14 @@ function vMonat() {
     ${pend ? `<section class="pending">${pend.map((r) => bubble(r.who, r.text)).join('')}<button class="close" data-act="dismiss" aria-label="Schließen">${svg('x', 18)}</button></section>` : ''}
     <section class="hero ${m.amp}">
       ${m.amp === 'rot' ? `<div class="stripe top"></div><div class="alarm">${TRE}<div><b class="blink">ALARMSTUFE ROT</b><span>Freies Geld aufgebraucht · Ausgabenstopp</span></div></div>` : ''}
-      <span class="eyebrow">Noch frei bis ${m.dim}.${m.m + 1}.</span>
+      <span class="eyebrow">Noch frei bis ${m.dim}.${m.m + 1}.${m.balance ? ' · laut Kontostand' : ''}</span>
       <strong class="big">${m.freeLeft < 0 ? '− ' : ''}${eur0(Math.abs(m.freeLeft))}</strong>
       <span class="sub">${m.freeLeft > 0 ? `≈ ${eur(m.perDay)} pro Tag` : m.amp === 'rot' ? 'Nur noch Pflicht: Tanken, Parken.' : ''}</span>
       <div class="bar"><i class="pfl" style="width:${pflShare * 100}%"></i><i style="width:${(1 - pflShare) * share * 100}%"></i></div>
-      <div class="legend"><span>Pflicht ${eur0(m.pflicht)}</span><span>Frei ausgegeben ${eur0(m.freeSpent)}</span></div>
+      <div class="legend">${m.balance ? `<span>Kontostand ${eur0(m.balance.amount)} am ${new Date(m.balance.at).getDate()}.${m.m + 1}.</span><span>noch Pflicht ${eur0(m.balance.fixRemain + m.balance.commuteRemain)}</span>` : `<span>Pflicht ${eur0(m.pflicht)}</span><span>Frei ausgegeben ${eur0(m.freeSpent)}</span>`}</div>
       ${m.amp === 'rot' ? '<div class="stripe bottom"></div>' : ''}
     </section>
+    <a class="standlink" href="#/stand">${m.balance ? 'Kontostand aktualisieren' : 'Kontostand eintragen – dann wird’s genauer'}</a>
     ${bubble(line.who, line.text)}
     <div class="quick">
       <a class="qb dark" href="#/neu/tanken">${svg('fuel')}Getankt</a>
@@ -316,6 +331,7 @@ function vPflicht() {
       <div class="frow"><span class="lbl">Parken (Schätzung, bis gelernt)</span><label class="money"><input type="number" inputmode="decimal" value="${S().parkPerMonth}" data-chg="setNum" data-f="parkPerMonth"> € / Monat</label></div>
       <div class="frow"><span class="lbl">Parken-Schnellbeträge</span><input class="chipsin" value="${S().parkChips.map(n2).join(' / ')}" data-chg="parkChips" aria-label="Schnellbeträge"></div>
     </section>
+    <a class="sumline link2" href="#/stand"><span>Kontostand</span><b>${m.balance ? `${eur0(m.balance.amount)} (${new Date(m.balance.at).getDate()}.${m.m + 1}.) ändern` : 'eintragen'}</b></a>
     <div class="sumline"><span>Pflicht diesen Monat (geschätzt)</span><b>${eur0(m.pflicht)}</b></div>
     <div class="sumline"><span>Bleibt frei</span><b>${eur0(m.initialFree)}</b></div>
 
@@ -338,7 +354,7 @@ function vPflicht() {
     <button class="btn white wide" data-act="backup">${svg('file', 18)} Backup speichern</button>
     <label class="btn white wide">Backup wiederherstellen<input type="file" accept=".json,application/json" class="sr-only" data-chg="restore"></label>
     <button class="btn ghost-red wide" data-act="reset">${svg('trash', 18)} Alles löschen</button>
-    <p class="hint">No Change Brotha · Version 1 · Daten nur auf diesem Gerät</p></div>`;
+    <p class="hint">No Change Brotha · Version 2 · Daten nur auf diesem Gerät</p></div>`;
 }
 
 // ---------- WILLKOMMEN ----------
@@ -388,6 +404,7 @@ function afterExpense(t) {
 }
 
 const actions = {
+  standClear: () => { delete S().balance; save(); location.hash = '#/monat'; },
   dismiss: () => { state.pending = null; save(); rerender(); },
   cat: (el) => { draft.cat = el.dataset.v; if (draft.cat === 'tanken' && !draft.amount) draft.amount = String(S().tankDefault); if (CATS[draft.cat].kind !== 'frei') draft.impulse = false; rerender(); },
   chipAmt: (el) => { draft.amount = n2(+el.dataset.v); rerender(); },
@@ -471,6 +488,12 @@ function shrink(file, size) {
 }
 
 const forms = {
+  stand: (f) => {
+    const amount = parseAmount(f.amount.value);
+    if (!isFinite(amount)) { toast('Bitte einen Betrag eingeben'); return; }
+    S().balance = { amount, at: Date.now() };
+    save(); toast('Kontostand gespeichert'); location.hash = '#/monat';
+  },
   tx: (f) => {
     const amount = parseAmount(f.amount.value);
     if (!(amount > 0)) { toast('Bitte einen Betrag eingeben'); return; }

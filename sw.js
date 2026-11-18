@@ -1,6 +1,6 @@
 // Service Worker: hält die App offline verfügbar.
 // Bei jeder neuen Version VERSION erhöhen, damit das iPhone die neuen Dateien lädt.
-const VERSION = 'ncb-v1';
+const VERSION = 'ncb-v2';
 const FILES = [
   './', 'index.html', 'styles.css', 'manifest.webmanifest',
   'app.js', 'logic.js', 'personas.js',
